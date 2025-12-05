@@ -1,0 +1,19 @@
+jobs:
+  close-old-prs:
+    runs-on: self-hosted 
+    # Añadimos los permisos de forma explícita al job
+    permissions:
+      contents: read
+      pull-requests: write # Dar permiso de escritura a las PRs
+      
+    steps:
+      # ... (El paso 'Buscar y cerrar PRs inactivas' se mantiene igual)
+      - name: Buscar y cerrar PRs que no cumplieron el plazo (5 minutos de prueba)
+        uses: actions/stale@v9
+        with:
+          days-before-close: 0.0035 
+          days-before-stale: -1 
+          stale-pr-message: |
+            ❌ [FALLO DE CUMPLIMIENTO] ❌ Esta PR ha excedido el límite de 5 minutos...
+          close-pr-label: 'time-expired'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
