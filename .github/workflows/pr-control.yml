@@ -1,31 +1,33 @@
-# .github/workflows/pr-control.yml
-
-name: Control de Time-to-Merge (WP 2.4)
+name: PR Timer (WP 2.4 - Cierre por 1 Minuto)
 
 on:
-  schedule:
-    # MODIFICACIÓN CLAVE: Se ejecuta CADA 5 MINUTOS (para prueba).
-    - cron: '*/5 * * * *' 
-  workflow_dispatch: 
-    
+  pull_request:
+    types: [opened, synchronize]
+
 jobs:
-  close-old-prs:
-    runs-on: self-hosted 
+  check-and-close:
+    runs-on: self-hosted
+    
     permissions:
-      pull-requests: write # Necesario para cerrar la PR
+      contents: read
+      pull-requests: write 
 
     steps:
-      - name: Buscar y cerrar PRs que no cumplieron el plazo (5 minutos de prueba)
+      - name: Mensaje de Advertencia
+        run: echo "ADVERTENCIA: Este paso bloquea el runner durante 1 minuto para la prueba."
+
+      - name: Esperar 1 Minuto (Tiempo Límite de Revisión)
+        run: |
+          echo "Durmiendo por 60 segundos (1 minuto)..."
+          sleep 60
+
+      - name: Verificar y Cerrar PR si no fue fusionada
         uses: actions/stale@v9
         with:
-          # Si la PR lleva más de 5 minutos (0.0035 días), se cierra.
-          days-before-close: 0.0035 
-          days-before-stale: -1 # Va directo al cierre
-          
-          # El mensaje de notificación de fallo (si excede el tiempo)
+          days-before-close: 0        # ← ENTERO válido
+          days-before-stale: -1
           stale-pr-message: |
-            ❌ **[FALLO DE CUMPLIMIENTO]** ❌
-            Esta Pull Request ha excedido el límite de **5 minutos** establecido para la revisión (WP 2.4). El requisito de *Time-to-Merge* NO SE HA CUMPLIDO. Se cierra automáticamente.
-            
+            ❌ **[REGLA DE TIEMPO INCUMPLIDA - LÍMITE DE 1 MINUTO]** ❌
+            Esta Pull Request ha excedido el límite de 1 minuto establecido. El requisito de *Time-to-Merge* NO SE HA CUMPLIDO. Se cierra automáticamente.
           close-pr-label: 'time-expired'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
