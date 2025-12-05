@@ -1,26 +1,33 @@
-# 1. Nombre del Workflow
-name: Pull Review Timer
+# .github/workflows/pr-control.yml
 
-# 2. DISPARADORES (La sección "on" que faltaba o estaba vacía)
+name: Control de Time-to-Merge (WP 2.4)
+
 on:
-  pull_request: # Se dispara al abrir, reabrir o sincronizar una PR
-    types: [opened, reopened, synchronize]
+  schedule:
+    # Este es el disparador del temporizador (5 minutos para la prueba)
+    - cron: '*/5 * * * *' 
+  workflow_dispatch: 
+    
 jobs:
   close-old-prs:
     runs-on: self-hosted 
-    # Añadimos los permisos de forma explícita al job
+    # Añadimos los permisos explícitos para resolver el fallo de interacción
     permissions:
       contents: read
-      pull-requests: write # Dar permiso de escritura a las PRs
-      
+      pull-requests: write 
+
     steps:
-      # ... (El paso 'Buscar y cerrar PRs inactivas' se mantiene igual)
       - name: Buscar y cerrar PRs que no cumplieron el plazo (5 minutos de prueba)
         uses: actions/stale@v9
         with:
+          # Si la PR lleva más de 5 minutos (0.0035 días), se cierra.
           days-before-close: 0.0035 
           days-before-stale: -1 
+          
+          # Mensaje de notificación de fallo
           stale-pr-message: |
-            ❌ [FALLO DE CUMPLIMIENTO] ❌ Esta PR ha excedido el límite de 5 minutos...
+            ❌ **[FALLO DE CUMPLIMIENTO]** ❌
+            Esta Pull Request ha excedido el límite de **5 minutos** establecido para la revisión (WP 2.4). El requisito de *Time-to-Merge* NO SE HA CUMPLIDO. Se cierra automáticamente.
+            
           close-pr-label: 'time-expired'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
