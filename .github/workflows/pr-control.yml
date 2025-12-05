@@ -4,15 +4,17 @@ name: Control de Time-to-Merge (WP 2.4)
 
 on:
   schedule:
-    # MODIFICACIÓN CLAVE: Se ejecuta CADA 5 MINUTOS (para prueba).
+    # Este es el disparador del temporizador (5 minutos para la prueba)
     - cron: '*/5 * * * *' 
   workflow_dispatch: 
     
 jobs:
   close-old-prs:
     runs-on: self-hosted 
+    # Añadimos los permisos explícitos para resolver el fallo de interacción
     permissions:
-      pull-requests: write # Necesario para cerrar la PR
+      contents: read
+      pull-requests: write 
 
     steps:
       - name: Buscar y cerrar PRs que no cumplieron el plazo (5 minutos de prueba)
@@ -20,9 +22,9 @@ jobs:
         with:
           # Si la PR lleva más de 5 minutos (0.0035 días), se cierra.
           days-before-close: 0.0035 
-          days-before-stale: -1 # Va directo al cierre
+          days-before-stale: -1 
           
-          # El mensaje de notificación de fallo (si excede el tiempo)
+          # Mensaje de notificación de fallo
           stale-pr-message: |
             ❌ **[FALLO DE CUMPLIMIENTO]** ❌
             Esta Pull Request ha excedido el límite de **5 minutos** establecido para la revisión (WP 2.4). El requisito de *Time-to-Merge* NO SE HA CUMPLIDO. Se cierra automáticamente.
