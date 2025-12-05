@@ -1,26 +1,39 @@
-# 1. Nombre del Workflow
-name: Pull Review Timer
+name: PR Timer (WP 2.4 - Cierre por 1 Minuto)
 
-# 2. DISPARADORES (La sección "on" que faltaba o estaba vacía)
 on:
-  pull_request: # Se dispara al abrir, reabrir o sincronizar una PR
-    types: [opened, reopened, synchronize]
+  # Se activa SÓLO cuando se abre o actualiza una Pull Request
+  pull_request: 
+    types: [opened, synchronize] 
+
 jobs:
-  close-old-prs:
-    runs-on: self-hosted 
-    # Añadimos los permisos de forma explícita al job
+  check-and-close:
+    runs-on: self-hosted
+    
+    # Permisos necesarios para que la acción de cierre funcione
     permissions:
       contents: read
-      pull-requests: write # Dar permiso de escritura a las PRs
-      
+      pull-requests: write 
+
     steps:
-      # ... (El paso 'Buscar y cerrar PRs inactivas' se mantiene igual)
-      - name: Buscar y cerrar PRs que no cumplieron el plazo (5 minutos de prueba)
+      - name: Mensaje de Advertencia
+        run: echo "ADVERTENCIA: Este paso bloquea el runner durante 1 minuto para la prueba."
+
+      # 1. ESPERA ACTIVA (SIMULACIÓN DE TIEMPO LÍMITE)
+      - name: Esperar 1 Minuto (Tiempo Límite de Revisión)
+        run: |
+          echo "Durmiendo por 60 segundos (1 minuto)..."
+          sleep 60  # 60 segundos = 1 minuto
+
+      # 2. INTENTO DE CIERRE AUTOMÁTICO
+      # Se ejecuta inmediatamente después de que termina el 'sleep' de 1 minuto.
+      - name: Verificar y Cerrar PR si no fue fusionada
         uses: actions/stale@v9
         with:
-          days-before-close: 0.0035 
-          days-before-stale: -1 
+          # Usamos un tiempo mínimo ya que la espera ya ocurrió con 'sleep'.
+          days-before-close: 0.0001 
+          days-before-stale: -1 # Va directo al cierre sin etiquetar
           stale-pr-message: |
-            ❌ [FALLO DE CUMPLIMIENTO] ❌ Esta PR ha excedido el límite de 5 minutos...
+            ❌ **[REGLA DE TIEMPO INCUMPLIDA - LÍMITE DE 1 MINUTO]** ❌
+            Esta Pull Request ha excedido el límite de 1 minuto establecido. El requisito de *Time-to-Merge* NO SE HA CUMPLIDO. Se cierra automáticamente.
           close-pr-label: 'time-expired'
           repo-token: ${{ secrets.GITHUB_TOKEN }}
