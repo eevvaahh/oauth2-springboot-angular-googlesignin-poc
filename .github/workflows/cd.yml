@@ -16,21 +16,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Quitamos Buildx porque no funciona en este contenedor
-      # - name: Set up Docker Buildx
-      #   uses: docker/setup-buildx-action@v2
-
       - name: Build and start containers
         run: |
-          docker-compose -f docker-compose.yml build
-          docker-compose -f docker-compose.yml up -d
+          # 🔑 CAMBIO CLAVE: Usamos 'sudo docker compose' (sin guion)
+          sudo docker compose -f docker-compose.yml build
+          sudo docker compose -f docker-compose.yml up -d
 
       - name: Health check
         run: |
+          # 🔑 NOTA: Aquí no necesitas sudo, ya que solo lees el estado y haces curls.
           docker ps
           curl -f http://localhost:18080/.well-known/openid-configuration || echo "Authorization server not ready"
           curl -f http://localhost:18081/actuator/health || echo "Resource server not ready"
 
       - name: Stop containers
         if: always()
-        run: docker-compose -f docker-compose.yml down
+        run: 
+          # 🔑 CAMBIO CLAVE: Usamos 'sudo docker compose' (sin guion)
+          sudo docker compose -f docker-compose.yml down
