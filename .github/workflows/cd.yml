@@ -28,8 +28,8 @@ jobs:
       - name: Health check
         run: |
           docker ps
-          curl -f http://localhost:8080/.well-known/openid-configuration
-          curl -f http://localhost:8081/actuator/health || echo "Resource server not ready"
+          curl -f http://localhost:18080/.well-known/openid-configuration || echo "Authorization server not ready"
+          curl -f http://localhost:18081/actuator/health || echo "Resource server not ready"
 
       - name: Stop containers
         if: always()
