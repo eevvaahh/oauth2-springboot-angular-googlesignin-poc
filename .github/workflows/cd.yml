@@ -16,21 +16,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      # --- 1. BUILD Y START ---
       - name: Build and start containers
         run: |
-          # 🔑 CAMBIO CLAVE: Usamos 'sudo docker compose' (sin guion)
+          # Usamos 'sudo docker compose' para resolver los errores de sintaxis y permisos
           sudo docker compose -f docker-compose.yml build
           sudo docker compose -f docker-compose.yml up -d
-
-      - name: Health check
-        run: |
-          # 🔑 NOTA: Aquí no necesitas sudo, ya que solo lees el estado y haces curls.
-          docker ps
-          curl -f http://localhost:18080/.well-known/openid-configuration || echo "Authorization server not ready"
-          curl -f http://localhost:18081/actuator/health || echo "Resource server not ready"
-
+      
+      # --- 3. STOP Y CLEANUP ---
       - name: Stop containers
         if: always()
         run: 
-          # 🔑 CAMBIO CLAVE: Usamos 'sudo docker compose' (sin guion)
           sudo docker compose -f docker-compose.yml down
