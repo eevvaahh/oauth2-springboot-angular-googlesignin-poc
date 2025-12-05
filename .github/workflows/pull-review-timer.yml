@@ -12,10 +12,10 @@ jobs:
       pull-requests: write
 
     steps:
-      - name: Espera 1 minuto
+      - name: Espera 1 hora
         run: |
-          echo "Esperando 60 segundos antes de verificar la PR..."
-          sleep 60
+          echo "Esperando 1 hora antes de verificar la PR..."
+          sleep 3600
 
       - name: Cerrar PR si no se fusionó
         if: github.event.pull_request.merged == false
