@@ -1,3 +1,10 @@
+# 1. Nombre del Workflow
+name: Pull Review Timer
+
+# 2. DISPARADORES (La sección "on" que faltaba o estaba vacía)
+on:
+  pull_request: # Se dispara al abrir, reabrir o sincronizar una PR
+    types: [opened, reopened, synchronize]
 jobs:
   close-old-prs:
     runs-on: self-hosted 
