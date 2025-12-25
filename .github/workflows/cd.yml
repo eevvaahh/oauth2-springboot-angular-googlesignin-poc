@@ -69,10 +69,33 @@ jobs:
           echo "Commit ID: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           # Guardamos una prueba física en el runner
           echo "[$TIMESTAMP] Escaneo exitoso para commit ${{ github.sha }}. Procediendo a despliegue." >> deploy_audit.log
+          # --- 4. EMPAQUETADO Y ALMACENAMIENTO DE BINARIO CON VERSIÓN ---
+      - name: Almacenar Binario del Proyecto
+        run: |
+          # 1. Localizar el archivo .jar generado en la carpeta target
+          JAR_FILE=$(find . -name "*.jar" -not -path "*/target/test-classes/*" | head -n 1)
           
+          # 2. Extraer la versión del pom.xml para el nombre del archivo
+          VERSION=$(grep -m 1 '<version>' $(find . -name "pom.xml" | head -n 1) | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
+          
+          # 3. Crear una carpeta para el binario y copiarlo con el nombre versionado
+          mkdir -p binarios_despliegue
+          cp "$JAR_FILE" "binarios_despliegue/app-v${VERSION}-${{ github.run_number }}.jar"
+          
+          echo "Binario preparado: app-v${VERSION}-${{ github.run_number }}.jar"
+          echo "VERSION_APP=v${VERSION}" >> $GITHUB_ENV
+
+      - name: Subir Binario a GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Binario-Verificado-${{ env.VERSION_APP }}
+          path: binarios_despliegue/*.jar
+          retention-days: 5
+
       # --- DESPLIEGUE ---
       - name: Build and start containers
         run: |
+          echo "Desplegando componentes verificados versión ${{ env.VERSION_APP }}..."
           sudo docker compose -f docker-compose.yml build
           sudo docker compose -f docker-compose.yml up -d
       
