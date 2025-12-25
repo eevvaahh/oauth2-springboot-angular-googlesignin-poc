@@ -2,32 +2,20 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - develop
+    branches: [ develop ]
   pull_request:
-    branches:
-      - develop
-      - prueba
+    branches: [ develop, prueba ]
 
 jobs:
   build-and-deploy:
     runs-on: self-hosted
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Crucial para que Sonar compare versiones
+          fetch-depth: 0
 
-      # --- NUEVO: ANÁLISIS DE CÓDIGO ---
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Ya lo crea GitHub solo
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Este es el que debes añadir tú
-          
       # --- CONTROL DE VERSIONES Y SBOM ---
-      # Esto demuestra que conoces los componentes y vigilas cambios de versión
       - name: Generar Inventario SBOM y Check de Versiones
         run: |
           echo "### 📦 Reporte de Control de Componentes (SBOM)" >> $GITHUB_STEP_SUMMARY
@@ -35,20 +23,18 @@ jobs:
           # Localizar el proyecto Java dinámicamente
           POM_PATH=$(find . -name "pom.xml" -not -path "*/target/*" | head -n 1)
           PROJECT_DIR=$(dirname "$POM_PATH")
-          
           cd "$PROJECT_DIR"
-          echo "Analizando componentes en: $PROJECT_DIR" >> $GITHUB_STEP_SUMMARY
           
-          # Dar permisos al wrapper de Maven
+          echo "Directorio analizado: $PROJECT_DIR" >> $GITHUB_STEP_SUMMARY
           chmod +x ./mvnw
           
-          # 1. Generar inventario de dependencias
+          # 1. Generar inventario de dependencias (SBOM)
           ./mvnw dependency:list -DoutputFile=lista_deps.txt
           
-          # 2. Control de versiones (Detecta si hay cambios o actualizaciones)
+          # 2. Control de cambios de versión
           ./mvnw versions:display-dependency-updates > updates.txt
           
-          # 3. Volcar resultados al Summary de GitHub
+          # 3. Publicar en el Summary
           echo '#### Resultado del escaneo de versiones:' >> $GITHUB_STEP_SUMMARY
           echo '```text' >> $GITHUB_STEP_SUMMARY
           if grep -q "The following dependency updates are available" updates.txt; then
@@ -58,13 +44,18 @@ jobs:
           fi
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      # --- ANÁLISIS DE SEGURIDAD DE COMPONENTES (Opcional pero recomendado) ---
-      - name: Dependency Check (Análisis de vulnerabilidades en SBOM)
-        uses: dependency-check/Dependency-Check_Action@main
+      # --- SONARCLOUD SCAN (Calidad y Seguridad) ---
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
-          project: 'oauth2-poc'
-          path: '.'
-          format: 'HTML'
+          args: >
+            -Dsonar.projectKey=eevvaahh_oauth2-springboot-angular-googlesignin-poc
+            -Dsonar.organization=eevvaahh
+            -Dsonar.java.binaries=.
+            
       # --- 1. BUILD Y START ---
       - name: Build and start containers
         run: |
