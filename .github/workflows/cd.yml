@@ -15,11 +15,19 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Crucial para que Sonar compare versiones
+
+      # --- NUEVO: ANÁLISIS DE CÓDIGO ---
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarcloud-github-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Ya lo crea GitHub solo
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Este es el que debes añadir tú
 
       # --- 1. BUILD Y START ---
       - name: Build and start containers
         run: |
-          # Usamos 'sudo docker compose' para resolver los errores de sintaxis y permisos
           sudo docker compose -f docker-compose.yml build
           sudo docker compose -f docker-compose.yml up -d
       
