@@ -15,12 +15,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      # --- CONTROL DE VERSIONES Y SBOM (MULTI-TECNOLOGÍA) ---
+      # 1. CONTROL DE VERSIONES Y SBOM (TODOS LOS COMPONENTES)
       - name: Generar Inventario SBOM y Check de Versiones
         run: |
           echo "### 📦 Reporte de Control de Componentes (SBOM)" >> $GITHUB_STEP_SUMMARY
           
-          # 1. ANALIZAR MÓDULOS JAVA (Maven)
+          # Análisis de Java (Maven)
           MODULOS_JAVA=$(find . -name "pom.xml" -not -path "*/target/*")
           for pom in $MODULOS_JAVA; do
             DIR=$(dirname "$pom")
@@ -37,18 +37,17 @@ jobs:
             cd "$GITHUB_WORKSPACE"
           done
 
-          # 2. ANALIZAR MÓDULO FRONTEND (NPM/Angular)
+          # Análisis de Frontend (NPM)
           if [ -d "ag-prueba-front" ]; then
             echo "#### 📂 Frontend: ag-prueba-front" >> $GITHUB_STEP_SUMMARY
             cd ag-prueba-front
             echo '```text' >> $GITHUB_STEP_SUMMARY
-            # Muestra versiones desactualizadas de npm
-            npm outdated >> $GITHUB_STEP_SUMMARY || echo "Todas las dependencias de Angular están al día." >> $GITHUB_STEP_SUMMARY
+            npm outdated >> $GITHUB_STEP_SUMMARY || echo "Dependencias de Angular al día." >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             cd "$GITHUB_WORKSPACE"
           fi
 
-      # --- SONARCLOUD SCAN ---
+      # 2. SONARCLOUD SCAN (Calidad y Seguridad)
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
@@ -60,39 +59,47 @@ jobs:
             -Dsonar.organization=eevvaahh
             -Dsonar.java.binaries=.
 
-        # 3. MEDICIÓN Y AUDITORÍA (Prueba de que se escaneó antes de desplegar)
+      # 3. COMPILACIÓN (Generar físicamente los archivos .jar)
+      - name: Compilar Proyectos Java
+        run: |
+          MODULOS_JAVA=$(find . -name "pom.xml" -not -path "*/target/*")
+          for pom in $MODULOS_JAVA; do
+            DIR=$(dirname "$pom")
+            cd "$DIR"
+            ./mvnw clean package -DskipTests
+            cd "$GITHUB_WORKSPACE"
+          done
+
+      # 4. MEDICIÓN Y AUDITORÍA
       - name: Registro de Auditoría Pre-Despliegue
         run: |
           TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
           echo "### 🛡️ Certificado de Escaneo Pre-Despliegue" >> $GITHUB_STEP_SUMMARY
           echo "Escaneo realizado con éxito a las: $TIMESTAMP" >> $GITHUB_STEP_SUMMARY
           echo "Commit ID: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          # Guardamos una prueba física en el runner
-          echo "[$TIMESTAMP] Escaneo exitoso para commit ${{ github.sha }}. Procediendo a despliegue." >> deploy_audit.log
-          # --- 4. EMPAQUETADO Y ALMACENAMIENTO DE BINARIO CON VERSIÓN ---
-      - name: Almacenar Binario del Proyecto
-        run: |
-          # 1. Localizar el archivo .jar generado en la carpeta target
-          JAR_FILE=$(find . -name "*.jar" -not -path "*/target/test-classes/*" | head -n 1)
-          
-          # 2. Extraer la versión del pom.xml para el nombre del archivo
-          VERSION=$(grep -m 1 '<version>' $(find . -name "pom.xml" | head -n 1) | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
-          
-          # 3. Crear una carpeta para el binario y copiarlo con el nombre versionado
-          mkdir -p binarios_despliegue
-          cp "$JAR_FILE" "binarios_despliegue/app-v${VERSION}-${{ github.run_number }}.jar"
-          
-          echo "Binario preparado: app-v${VERSION}-${{ github.run_number }}.jar"
-          echo "VERSION_APP=v${VERSION}" >> $GITHUB_ENV
+          echo "[$TIMESTAMP] Escaneo exitoso para commit ${{ github.sha }}." >> deploy_audit.log
 
-      - name: Subir Binario a GitHub Artifacts
+      # 5. EMPAQUETADO Y ALMACENAMIENTO DE BINARIOS
+      - name: Almacenar Binarios Versionados
+        run: |
+          # Extraer versión del primer pom.xml encontrado
+          VERSION=$(grep -m 1 '<version>' $(find . -name "pom.xml" -not -path "*/target/*" | head -n 1) | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
+          echo "VERSION_APP=v${VERSION}" >> $GITHUB_ENV
+          
+          mkdir -p binarios_despliegue
+          # Buscar todos los JARs generados y copiarlos
+          find . -name "*.jar" -not -path "*/target/test-classes/*" -exec cp {} binarios_despliegue/ \;
+          
+          echo "Binarios preparados para versión v${VERSION}"
+
+      - name: Subir Binarios a GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Binario-Verificado-${{ env.VERSION_APP }}
+          name: Binarios-Verificados-v${{ github.run_number }}
           path: binarios_despliegue/*.jar
           retention-days: 5
 
-      # --- DESPLIEGUE ---
+      # 6. DESPLIEGUE
       - name: Build and start containers
         run: |
           echo "Desplegando componentes verificados versión ${{ env.VERSION_APP }}..."
