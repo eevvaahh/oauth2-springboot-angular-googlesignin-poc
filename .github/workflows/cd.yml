@@ -2,38 +2,53 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - develop
+    branches: [ develop ]
   pull_request:
-    branches:
-      - develop
-      - prueba
+    branches: [ develop ]
 
 jobs:
   build-and-deploy:
     runs-on: self-hosted
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Crucial para que Sonar compare versiones
+          fetch-depth: 0
 
-      # --- NUEVO: ANÁLISIS DE CÓDIGO ---
+      # --- NUEVO: CONTROL DE SBOM Y VERSIONES ---
+      - name: Generar Inventario SBOM y Check de Versiones
+        run: |
+          echo "### 📦 Reporte de Control de Componentes (SBOM)" >> $GITHUB_STEP_SUMMARY
+          echo "Verificando dependencias en pom.xml..." >> $GITHUB_STEP_SUMMARY
+          
+          # Genera la lista de dependencias y versiones actuales
+          mvn dependency:list -DoutputFile=lista_deps.txt
+          
+          # Detecta si hay versiones nuevas o cambios (Tu herramienta de control)
+          mvn versions:display-dependency-updates > updates.txt
+          
+          echo '```text' >> $GITHUB_STEP_SUMMARY
+          grep -A 15 "The following dependency updates are available" updates.txt >> $GITHUB_STEP_SUMMARY || echo "No hay cambios de versión detectados." >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      # --- SONARCLOUD (Versión actualizada sin avisos) ---
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Ya lo crea GitHub solo
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}    # Este es el que debes añadir tú
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=eevvaahh_oauth2-springboot-angular-googlesignin-poc
+            -Dsonar.organization=eevvaahh
+            -Dsonar.java.binaries=.
 
-      # --- 1. BUILD Y START ---
+      # --- DOCKER BUILD & START ---
       - name: Build and start containers
         run: |
           sudo docker compose -f docker-compose.yml build
           sudo docker compose -f docker-compose.yml up -d
       
-      # --- 3. STOP Y CLEANUP ---
       - name: Stop containers
         if: always()
-        run: 
-          sudo docker compose -f docker-compose.yml down
+        run: sudo docker compose -f docker-compose.yml down
