@@ -15,6 +15,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      # --- ESCANEO DE SECRETOS Y CREDENCIALES ---
+      - name: Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: false # Esto hace que el pipeline se pare si encuentra un secreto
+        
       # 1. CONTROL DE VERSIONES Y SBOM (TODOS LOS COMPONENTES)
       - name: Generar Inventario SBOM y Check de Versiones
         run: |
