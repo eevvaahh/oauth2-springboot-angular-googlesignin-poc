@@ -15,23 +15,32 @@ jobs:
         with:
           fetch-depth: 0
 
-      # --- NUEVO: CONTROL DE SBOM Y VERSIONES ---
+      # --- CONTROL DE VERSIONES Y SBOM ---
       - name: Generar Inventario SBOM y Check de Versiones
         run: |
           echo "### 📦 Reporte de Control de Componentes (SBOM)" >> $GITHUB_STEP_SUMMARY
           echo "Verificando dependencias en pom.xml..." >> $GITHUB_STEP_SUMMARY
           
-          # Genera la lista de dependencias y versiones actuales
-          mvn dependency:list -DoutputFile=lista_deps.txt
+          # Dar permisos de ejecución al wrapper de Maven
+          chmod +x ./mvnw
           
-          # Detecta si hay versiones nuevas o cambios (Tu herramienta de control)
-          mvn versions:display-dependency-updates > updates.txt
+          # Generar la lista de dependencias actuales
+          ./mvnw dependency:list -DoutputFile=lista_deps.txt
           
+          # Detectar si hay versiones nuevas o cambios de componentes
+          ./mvnw versions:display-dependency-updates > updates.txt
+          
+          # Publicar los resultados en el Summary de GitHub
+          echo '#### Resultado del escaneo de versiones:' >> $GITHUB_STEP_SUMMARY
           echo '```text' >> $GITHUB_STEP_SUMMARY
-          grep -A 15 "The following dependency updates are available" updates.txt >> $GITHUB_STEP_SUMMARY || echo "No hay cambios de versión detectados." >> $GITHUB_STEP_SUMMARY
+          if grep -q "The following dependency updates are available" updates.txt; then
+            grep -A 20 "The following dependency updates are available" updates.txt >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No se detectaron cambios de versión. Todos los componentes coinciden con el SBOM base." >> $GITHUB_STEP_SUMMARY
+          fi
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      # --- SONARCLOUD (Versión actualizada sin avisos) ---
+      # --- SONARCLOUD SCAN ---
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
@@ -48,7 +57,3 @@ jobs:
         run: |
           sudo docker compose -f docker-compose.yml build
           sudo docker compose -f docker-compose.yml up -d
-      
-      - name: Stop containers
-        if: always()
-        run: sudo docker compose -f docker-compose.yml down
