@@ -15,36 +15,40 @@ jobs:
         with:
           fetch-depth: 0
 
-      # --- CONTROL DE VERSIONES Y SBOM ---
+      # --- CONTROL DE VERSIONES Y SBOM (MULTI-TECNOLOGÍA) ---
       - name: Generar Inventario SBOM y Check de Versiones
         run: |
           echo "### 📦 Reporte de Control de Componentes (SBOM)" >> $GITHUB_STEP_SUMMARY
           
-          # Localizar el proyecto Java dinámicamente
-          POM_PATH=$(find . -name "pom.xml" -not -path "*/target/*" | head -n 1)
-          PROJECT_DIR=$(dirname "$POM_PATH")
-          cd "$PROJECT_DIR"
-          
-          echo "Directorio analizado: $PROJECT_DIR" >> $GITHUB_STEP_SUMMARY
-          chmod +x ./mvnw
-          
-          # 1. Generar inventario de dependencias (SBOM)
-          ./mvnw dependency:list -DoutputFile=lista_deps.txt
-          
-          # 2. Control de cambios de versión
-          ./mvnw versions:display-dependency-updates > updates.txt
-          
-          # 3. Publicar en el Summary
-          echo '#### Resultado del escaneo de versiones:' >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          if grep -q "The following dependency updates are available" updates.txt; then
-            grep -A 20 "The following dependency updates are available" updates.txt >> $GITHUB_STEP_SUMMARY
-          else
-            echo "No se detectaron cambios de versión. El SBOM es íntegro." >> $GITHUB_STEP_SUMMARY
-          fi
-          echo '```' >> $GITHUB_STEP_SUMMARY
+          # 1. ANALIZAR MÓDULOS JAVA (Maven)
+          MODULOS_JAVA=$(find . -name "pom.xml" -not -path "*/target/*")
+          for pom in $MODULOS_JAVA; do
+            DIR=$(dirname "$pom")
+            echo "#### 📂 Java: $DIR" >> $GITHUB_STEP_SUMMARY
+            cd "$DIR"
+            if [ -f "./mvnw" ]; then
+              chmod +x ./mvnw
+              ./mvnw dependency:list -DoutputFile=lista_deps.txt
+              ./mvnw versions:display-dependency-updates > updates.txt
+              echo '```text' >> $GITHUB_STEP_SUMMARY
+              grep -A 15 "The following dependency updates are available" updates.txt >> $GITHUB_STEP_SUMMARY || echo "SBOM íntegro." >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+            cd "$GITHUB_WORKSPACE"
+          done
 
-      # --- SONARCLOUD SCAN (Calidad y Seguridad) ---
+          # 2. ANALIZAR MÓDULO FRONTEND (NPM/Angular)
+          if [ -d "ag-prueba-front" ]; then
+            echo "#### 📂 Frontend: ag-prueba-front" >> $GITHUB_STEP_SUMMARY
+            cd ag-prueba-front
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            # Muestra versiones desactualizadas de npm
+            npm outdated >> $GITHUB_STEP_SUMMARY || echo "Todas las dependencias de Angular están al día." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cd "$GITHUB_WORKSPACE"
+          fi
+
+      # --- SONARCLOUD SCAN ---
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
@@ -55,15 +59,13 @@ jobs:
             -Dsonar.projectKey=eevvaahh_oauth2-springboot-angular-googlesignin-poc
             -Dsonar.organization=eevvaahh
             -Dsonar.java.binaries=.
-            
-      # --- 1. BUILD Y START ---
+
+      # --- DESPLIEGUE ---
       - name: Build and start containers
         run: |
           sudo docker compose -f docker-compose.yml build
           sudo docker compose -f docker-compose.yml up -d
       
-      # --- 3. STOP Y CLEANUP ---
-      - name: Stop containers
+      - name: Stop y Cleanup
         if: always()
-        run: 
-          sudo docker compose -f docker-compose.yml down
+        run: sudo docker compose -f docker-compose.yml down
