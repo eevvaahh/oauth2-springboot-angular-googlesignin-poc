@@ -15,20 +15,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 1. ESCANEO DE COMPONENTES (SBOM)
+      # --- CONTROL DE VERSIONES Y SBOM (MULTI-TECNOLOGÍA) ---
       - name: Generar Inventario SBOM y Check de Versiones
-        id: sbom_scan
         run: |
           echo "### 📦 Reporte de Control de Componentes (SBOM)" >> $GITHUB_STEP_SUMMARY
+          
+          # 1. ANALIZAR MÓDULOS JAVA (Maven)
           MODULOS_JAVA=$(find . -name "pom.xml" -not -path "*/target/*")
           for pom in $MODULOS_JAVA; do
             DIR=$(dirname "$pom")
+            echo "#### 📂 Java: $DIR" >> $GITHUB_STEP_SUMMARY
             cd "$DIR"
             if [ -f "./mvnw" ]; then
               chmod +x ./mvnw
               ./mvnw dependency:list -DoutputFile=lista_deps.txt
               ./mvnw versions:display-dependency-updates > updates.txt
-              echo "#### 📂 Java: $DIR" >> $GITHUB_STEP_SUMMARY
               echo '```text' >> $GITHUB_STEP_SUMMARY
               grep -A 15 "The following dependency updates are available" updates.txt >> $GITHUB_STEP_SUMMARY || echo "SBOM íntegro." >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
@@ -36,9 +37,19 @@ jobs:
             cd "$GITHUB_WORKSPACE"
           done
 
-      # 2. ESCANEO DE CALIDAD Y SEGURIDAD (SonarCloud)
+          # 2. ANALIZAR MÓDULO FRONTEND (NPM/Angular)
+          if [ -d "ag-prueba-front" ]; then
+            echo "#### 📂 Frontend: ag-prueba-front" >> $GITHUB_STEP_SUMMARY
+            cd ag-prueba-front
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            # Muestra versiones desactualizadas de npm
+            npm outdated >> $GITHUB_STEP_SUMMARY || echo "Todas las dependencias de Angular están al día." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cd "$GITHUB_WORKSPACE"
+          fi
+
+      # --- SONARCLOUD SCAN ---
       - name: SonarCloud Scan
-        id: sonar_scan
         uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -49,7 +60,7 @@ jobs:
             -Dsonar.organization=eevvaahh
             -Dsonar.java.binaries=.
 
-      # 3. MEDICIÓN Y AUDITORÍA (Prueba de que se escaneó antes de desplegar)
+        # 3. MEDICIÓN Y AUDITORÍA (Prueba de que se escaneó antes de desplegar)
       - name: Registro de Auditoría Pre-Despliegue
         run: |
           TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
@@ -58,11 +69,10 @@ jobs:
           echo "Commit ID: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
           # Guardamos una prueba física en el runner
           echo "[$TIMESTAMP] Escaneo exitoso para commit ${{ github.sha }}. Procediendo a despliegue." >> deploy_audit.log
-
-      # 4. DESPLIEGUE (Solo ocurre si los pasos anteriores terminaron bien)
+          
+      # --- DESPLIEGUE ---
       - name: Build and start containers
         run: |
-          echo "Desplegando componentes verificados..."
           sudo docker compose -f docker-compose.yml build
           sudo docker compose -f docker-compose.yml up -d
       
