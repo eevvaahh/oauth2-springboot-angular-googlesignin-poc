@@ -11,8 +11,8 @@ jobs:
     steps:
       - name: Espera de 1 minuto
         run: |
-          echo "Iniciando espera de 60 segundos..."
-          sleep 60
+          echo "Iniciando espera de 180 segundos..."
+          sleep 180
 
       - name: Validar y Cerrar
         env:
