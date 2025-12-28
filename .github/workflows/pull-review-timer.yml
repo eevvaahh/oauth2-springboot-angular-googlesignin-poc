@@ -11,8 +11,8 @@ jobs:
     steps:
       - name: Espera de 1 minuto
         run: |
-          echo "Esperando 60 segundos para recibir 2 aprobaciones..."
-          sleep 60
+          echo "Esperando 180 segundos (3 minutos) para recibir 2 aprobaciones..."
+          sleep 180
 
       - name: Validar aprobaciones
         env:
