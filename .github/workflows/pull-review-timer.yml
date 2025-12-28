@@ -1,4 +1,4 @@
-name: PR Timer – Cierre automático por falta de aprobaciones
+name: PR Timer – Cierre si no hay 2 aprobaciones
 on:
   pull_request:
     types: [opened, synchronize]
@@ -9,38 +9,47 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - name: Espera 1 minuto
+      - name: Espera de 1 minuto
         run: |
-          echo "Iniciando cronómetro de 60 segundos para obtener 2 aprobaciones..."
+          echo "Esperando 60 segundos para recibir 2 aprobaciones..."
           sleep 60
 
-      - name: Verificar aprobaciones y cerrar si no cumple
+      - name: Validar aprobaciones
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 1. Obtener el número de aprobaciones únicas
+          # 1. Obtener el autor de la PR para ignorarlo si intentara auto-aprobarse
+          PR_AUTHOR=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }} \
+            | jq -r '.user.login')
+
+          # 2. Obtener la lista de reviews, filtrar por APPROVED y contar usuarios únicos (excluyendo al autor)
           APPROVALS=$(curl -s -H "Authorization: Bearer $GH_TOKEN" \
             -H "Accept: application/vnd.github+json" \
             https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/reviews \
-            | jq '[.[] | select(.state == "APPROVED")] | map(.user.login) | unique | length')
+            | jq "[.[] | select(.state == \"APPROVED\" and .user.login != \"$PR_AUTHOR\")] | map(.user.login) | unique | length")
 
-          echo "Aprobaciones encontradas: $APPROVALS"
+          echo "Total de aprobaciones válidas encontradas: $APPROVALS"
 
-          # 2. Si las aprobaciones son menos de 2, cerrar la PR
+          # 3. Lógica de decisión
           if [ "$APPROVALS" -lt 2 ]; then
-            echo "Menos de 2 aprobaciones recibidas. Cerrando PR..."
-            curl -X PATCH \
+            echo "Solo hay $APPROVALS aprobación(es). Se requiere un mínimo de 2. Cerrando PR..."
+            
+            # Cerrar la PR
+            curl -s -X PATCH \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               https://api.github.com/repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }} \
               -d '{"state":"closed"}'
             
-            # Opcional: Dejar un comentario explicando por qué se cerró
-            curl -X POST \
+            # Dejar comentario explicativo
+            curl -s -X POST \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
               https://api.github.com/repos/${{ github.repository }}/issues/${{ github.event.pull_request.number }}/comments \
-              -d '{"body":"PR cerrada automáticamente: No se obtuvieron las 2 aprobaciones requeridas en el plazo de 1 minuto."}'
+              -d "{\"body\":\"❌ **PR Cerrada automáticamente.** Se obtuvieron $APPROVALS aprobaciones en 1 minuto, pero se requerían 2 personas distintas para mantenerla abierta.\"}"
+            
+            exit 1 # Marcamos el job como fallido para que se vea el error en el log
           else
-            echo "Objetivo alcanzado: 2 o más aprobaciones detectadas."
+            echo "✅ ¡Éxito! Se detectaron $APPROVALS aprobaciones. La PR permanecerá abierta para el merge."
           fi
