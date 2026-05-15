@@ -5,8 +5,7 @@ import { MenuComponent } from './components/menu/menu.component';
 
 @Component({
   selector: 'app-root',
-  templateUrl: './app.component.html',
-  styleUrl: './app.component.scss'
+  templateUrl: './app.component.html'
 })
 export class AppComponent implements OnInit {
   title = 'ag-prueba-front';

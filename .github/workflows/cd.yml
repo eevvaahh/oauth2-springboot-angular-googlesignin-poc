@@ -2,29 +2,117 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - develop
+    branches: [ develop ]
   pull_request:
-    branches:
-      - develop
+    branches: [ develop, prueba ]
 
 jobs:
   build-and-deploy:
     runs-on: self-hosted
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # --- 1. BUILD Y START ---
+      # --- ESCANEO DE SECRETOS Y CREDENCIALES ---
+      - name: Gitleaks Secret Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: false # Esto hace que el pipeline se pare si encuentra un secreto
+        
+      # 1. CONTROL DE VERSIONES Y SBOM (TODOS LOS COMPONENTES)
+      - name: Generar Inventario SBOM y Check de Versiones
+        run: |
+          echo "### 📦 Reporte de Control de Componentes (SBOM)" >> $GITHUB_STEP_SUMMARY
+          
+          # Análisis de Java (Maven)
+          MODULOS_JAVA=$(find . -name "pom.xml" -not -path "*/target/*")
+          for pom in $MODULOS_JAVA; do
+            DIR=$(dirname "$pom")
+            echo "#### 📂 Java: $DIR" >> $GITHUB_STEP_SUMMARY
+            cd "$DIR"
+            if [ -f "./mvnw" ]; then
+              chmod +x ./mvnw
+              ./mvnw dependency:list -DoutputFile=lista_deps.txt
+              ./mvnw versions:display-dependency-updates > updates.txt
+              echo '```text' >> $GITHUB_STEP_SUMMARY
+              grep -A 15 "The following dependency updates are available" updates.txt >> $GITHUB_STEP_SUMMARY || echo "SBOM íntegro." >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+            fi
+            cd "$GITHUB_WORKSPACE"
+          done
+
+          # Análisis de Frontend (NPM)
+          if [ -d "ag-prueba-front" ]; then
+            echo "#### 📂 Frontend: ag-prueba-front" >> $GITHUB_STEP_SUMMARY
+            cd ag-prueba-front
+            echo '```text' >> $GITHUB_STEP_SUMMARY
+            npm outdated >> $GITHUB_STEP_SUMMARY || echo "Dependencias de Angular al día." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cd "$GITHUB_WORKSPACE"
+          fi
+
+      # 2. SONARCLOUD SCAN (Calidad y Seguridad)
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=eevvaahh_oauth2-springboot-angular-googlesignin-poc
+            -Dsonar.organization=eevvaahh
+            -Dsonar.java.binaries=.
+
+      # 3. COMPILACIÓN (Generar físicamente los archivos .jar)
+      - name: Compilar Proyectos Java
+        run: |
+          MODULOS_JAVA=$(find . -name "pom.xml" -not -path "*/target/*")
+          for pom in $MODULOS_JAVA; do
+            DIR=$(dirname "$pom")
+            cd "$DIR"
+            ./mvnw clean package -DskipTests
+            cd "$GITHUB_WORKSPACE"
+          done
+
+      # 4. MEDICIÓN Y AUDITORÍA
+      - name: Registro de Auditoría Pre-Despliegue
+        run: |
+          TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
+          echo "### 🛡️ Certificado de Escaneo Pre-Despliegue" >> $GITHUB_STEP_SUMMARY
+          echo "Escaneo realizado con éxito a las: $TIMESTAMP" >> $GITHUB_STEP_SUMMARY
+          echo "Commit ID: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "[$TIMESTAMP] Escaneo exitoso para commit ${{ github.sha }}." >> deploy_audit.log
+
+      # 5. EMPAQUETADO Y ALMACENAMIENTO DE BINARIOS
+      - name: Almacenar Binarios Versionados
+        run: |
+          # Extraer versión del primer pom.xml encontrado
+          VERSION=$(grep -m 1 '<version>' $(find . -name "pom.xml" -not -path "*/target/*" | head -n 1) | sed 's/.*<version>\(.*\)<\/version>.*/\1/')
+          echo "VERSION_APP=v${VERSION}" >> $GITHUB_ENV
+          
+          mkdir -p binarios_despliegue
+          # Buscar todos los JARs generados y copiarlos
+          find . -name "*.jar" -not -path "*/target/test-classes/*" -exec cp {} binarios_despliegue/ \;
+          
+          echo "Binarios preparados para versión v${VERSION}"
+
+      - name: Subir Binarios a GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Binarios-Verificados-v${{ github.run_number }}
+          path: binarios_despliegue/*.jar
+          retention-days: 5
+
+      # 6. DESPLIEGUE
       - name: Build and start containers
         run: |
-          # Usamos 'sudo docker compose' para resolver los errores de sintaxis y permisos
+          echo "Desplegando componentes verificados versión ${{ env.VERSION_APP }}..."
           sudo docker compose -f docker-compose.yml build
           sudo docker compose -f docker-compose.yml up -d
       
-      # --- 3. STOP Y CLEANUP ---
-      - name: Stop containers
+      - name: Stop y Cleanup
         if: always()
-        run: 
-          sudo docker compose -f docker-compose.yml down
+        run: sudo docker compose -f docker-compose.yml down

@@ -65,6 +65,12 @@ public class AuthorizationSecurityConfig {
         http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
                 .authorizationEndpoint(auth -> auth.consentPage(CUSTOM_CONSENT_PAGE))
                 .oidc(Customizer.withDefaults());	// Enable OpenID Connect 1.0
+        // --- AÑADE ESTA LÍNEA AQUÍ ---
+        http.getConfigurer(OAuth2AuthorizationServerConfigurer.class)
+                .clientAuthentication(client -> client.errorResponseHandler((request, response, exception) -> {
+                    log.error("Error de auth de cliente: {}", exception.getMessage());
+                }));
+        // -----------------------------
         http.oauth2ResourceServer(resource -> resource.jwt(Customizer.withDefaults()));
         http.exceptionHandling(exceptions -> exceptions.defaultAuthenticationEntryPointFor(
                 new LoginUrlAuthenticationEntryPoint("/login"),
@@ -168,7 +174,7 @@ public class AuthorizationSecurityConfig {
 
     @Bean
     public AuthorizationServerSettings authorizationServerSettings(){
-        return AuthorizationServerSettings.builder().issuer("http://localhost:9000").build();
+        return AuthorizationServerSettings.builder().issuer("http://127.0.0.1:8080:").build();
     }
 
     @Bean
